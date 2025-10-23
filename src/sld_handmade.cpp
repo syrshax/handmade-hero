@@ -9,14 +9,14 @@
 #define global_variable static
 
 global_variable SDL_Texture *Texture;
-global_variable void *Pixels;
-global_variable int TextureWidth;
+global_variable void *BitmapMemory;
+global_variable int BitmapWidth;
 
 // TODO: This will be filed
 
 internal void SDLResizeTextureBuffer(SDL_Renderer *r, int height, int width) {
-  if (Pixels) {
-    free(Pixels);
+  if (BitmapMemory) {
+    free(BitmapMemory);
   }
   if (Texture) {
     SDL_DestroyTexture(Texture);
@@ -27,16 +27,13 @@ internal void SDLResizeTextureBuffer(SDL_Renderer *r, int height, int width) {
 
   printf("IM HERE OR NOT");
 
-  TextureWidth = width;
-  Pixels = malloc(width * height * 4);
+  BitmapWidth = width;
+  BitmapMemory = malloc(width * height * 4);
 }
 
 internal void SDLUpdateWindow(SDL_Renderer *r) {
-  SDL_UpdateTexture(Texture, 0, Pixels, TextureWidth * 4);
-  SDL_RenderTexture(
-      r, Texture, 0,
-      0); // Its like RenderCopy.. : Copy a portion of the texture to the
-          // current rendering target at subpixel precision.
+  SDL_UpdateTexture(Texture, 0, BitmapMemory, BitmapWidth * 4);
+  SDL_RenderTexture(r, Texture, 0, 0);
   SDL_RenderPresent(r);
 }
 
@@ -48,6 +45,10 @@ bool HandleEvent(SDL_Event *Event) {
 
     printf("Window RESIZED!\n Size is kinda nuts!: %d x %d\n",
            Event->window.data1, Event->window.data2);
+    SDL_Window *w = SDL_GetWindowFromID(Event->window.windowID);
+    SDL_Renderer *r = SDL_GetRenderer(w);
+    SDLResizeTextureBuffer(r, Event->window.data1, Event->window.data2);
+    SDLUpdateWindow(r);
 
   } break;
   case SDL_EVENT_WINDOW_CLOSE_REQUESTED: {
@@ -58,7 +59,6 @@ bool HandleEvent(SDL_Event *Event) {
   case SDL_EVENT_WINDOW_EXPOSED: {
     SDL_Window *w = SDL_GetWindowFromID(Event->window.windowID);
     SDL_Renderer *r = SDL_GetRenderer(w);
-    SDLResizeTextureBuffer(r, Event->window.data1, Event->window.data2);
     SDLUpdateWindow(r);
   } break;
   }
@@ -71,8 +71,7 @@ int main() {
     std::cerr << "Error initializing the VIDEO DRIVER\n";
   };
 
-  SDL_Window *Window =
-      SDL_CreateWindow("Handmade Hero", 900, 900, SDL_WINDOW_RESIZABLE);
+  SDL_Window *Window = SDL_CreateWindow("", 900, 900, SDL_WINDOW_RESIZABLE);
   if (!Window) {
     std::cerr << "Failed to create Window\n";
   }
