@@ -107,8 +107,8 @@ bool HandleEvent(SDL_Event *Event) {
     SDL_Renderer *r = SDL_GetRenderer(w);
     sdl_window_dimension window_size = SDLGetWindowDimension(w);
 
-    // SDLResizeTextureBuffer(&GlobalBackBuffer, r, window_size.Width,
-    //                        window_size.Height);
+    SDLResizeTextureBuffer(&GlobalBackBuffer, r, window_size.Width,
+                           window_size.Height);
     SDLDisplayBufferWindow(r, GlobalBackBuffer);
 
   } break;
@@ -120,32 +120,6 @@ bool HandleEvent(SDL_Event *Event) {
     SDL_Window *w = SDL_GetWindowFromID(Event->window.windowID);
     SDL_Renderer *r = SDL_GetRenderer(w);
     SDLDisplayBufferWindow(r, GlobalBackBuffer);
-  } break;
-  case SDL_EVENT_KEY_DOWN: {
-    SDL_Keycode KeyCode = Event->key.key;
-    std::cout << KeyCode << "\n";
-    local_persist int x_offset = 0;
-    local_persist int y_offset = 0;
-
-    if (KeyCode == SDLK_W) {
-      y_offset = 4 + y_offset;
-    }
-
-    if (KeyCode == SDLK_S) {
-      y_offset = y_offset - 4;
-    }
-
-    if (KeyCode == SDLK_A) {
-      x_offset = x_offset - 4;
-    }
-
-    if (KeyCode == SDLK_D) {
-      x_offset = x_offset + 4;
-    }
-
-    std::cout << x_offset << "\n";
-    std::cout << y_offset << "\n";
-
   } break;
   }
 
