@@ -16,18 +16,36 @@ typedef uint32_t uint32;
 typedef uint64_t uint64;
 
 global_variable bool Running = true;
-global_variable SDL_Texture *Texture;
-global_variable void *BitmapMemory;
-global_variable int BitmapWidth;
-global_variable int BitmapHeight;
-global_variable int BitsPerPixel = 4;
 
-internal void RenderWeirdGradiant(int x_offset, int y_offset) {
-  int Pitch = BitmapWidth * BitsPerPixel;
-  uint8 *Row = (uint8 *)BitmapMemory;
-  for (int Y = 0; Y < BitmapHeight; ++Y) {
+// NOTE: Always 32-bits pixels. SDL_PIXELFORMAT_ABGR8888. Little Endian.
+struct sdl_offscreen_buffer {
+  SDL_Texture *Texture;
+  void *Memory;
+  int Width;
+  int Height;
+  int Pitch;
+};
+
+struct sdl_window_dimension {
+  int Width;
+  int Height;
+};
+
+global_variable sdl_offscreen_buffer GlobalBackBuffer{};
+
+internal sdl_window_dimension SDLGetWindowDimension(SDL_Window *w) { // ignore
+  sdl_window_dimension r;
+  SDL_GetWindowSize(w, &r.Width, &r.Height);
+  return r;
+}
+
+internal void RenderWeirdGradiant(sdl_offscreen_buffer Buffer, int x_offset,
+                                  int y_offset) {
+
+  uint8 *Row = (uint8 *)Buffer.Memory;
+  for (int Y = 0; Y < Buffer.Height; ++Y) {
     uint32 *Pixel = (uint32 *)Row;
-    for (int X = 0; X < BitmapWidth; ++X) {
+    for (int X = 0; X < Buffer.Width; ++X) {
 
       /*
        * Pixel in memory:	RR	GG	BB	padding
@@ -36,40 +54,47 @@ internal void RenderWeirdGradiant(int x_offset, int y_offset) {
        */
       uint8 red = (X + x_offset);
       uint8 green = (Y + y_offset);
-      uint8 blue = 100;
+      uint8 blue = ((x_offset + y_offset) * 100) / 500;
       uint8 opacity = 255;
 
       *Pixel++ = (opacity << 24) | (blue << 16) | (green << 8) | red;
     }
-    Row += Pitch;
+    Row += Buffer.Pitch;
   }
 }
 
 // TODO: This will be filed
 
-internal void SDLResizeTextureBuffer(SDL_Renderer *r, int width, int height) {
-  if (BitmapMemory) {
-    int ok =
-        munmap(BitmapMemory, ((BitmapWidth * BitmapHeight) * BitsPerPixel));
+internal void SDLResizeTextureBuffer(sdl_offscreen_buffer *Buffer,
+                                     SDL_Renderer *r, int width, int height) {
+  int BitsPerPixel = 4;
+
+  if (Buffer->Memory) {
+    int ok = munmap(Buffer->Memory,
+                    ((Buffer->Width * Buffer->Height) * BitsPerPixel));
     std::cerr << "Its ok?: " << ok << "\n";
   }
-  if (Texture) {
-    SDL_DestroyTexture(Texture);
+  if (Buffer->Texture) {
+    SDL_DestroyTexture(Buffer->Texture);
   }
 
-  Texture = SDL_CreateTexture(r, SDL_PIXELFORMAT_ABGR8888,
-                              SDL_TEXTUREACCESS_STREAMING, width, height);
+  Buffer->Texture = SDL_CreateTexture(
+      r, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, width, height);
 
-  BitmapWidth = width;
-  BitmapHeight = height;
-  BitmapMemory =
-      mmap(0, (BitmapWidth * BitmapHeight) * BitsPerPixel,
+  Buffer->Width = width;
+  Buffer->Height = height;
+
+  Buffer->Memory =
+      mmap(0, (Buffer->Width * Buffer->Height) * BitsPerPixel,
            PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+
+  Buffer->Pitch = Buffer->Width * BitsPerPixel;
 }
 
-internal void SDLUpdateWindow(SDL_Renderer *r) {
-  SDL_UpdateTexture(Texture, 0, BitmapMemory, BitmapWidth * 4);
-  SDL_RenderTexture(r, Texture, 0, 0);
+internal void SDLDisplayBufferWindow(SDL_Renderer *r,
+                                     sdl_offscreen_buffer Buffer) {
+  SDL_UpdateTexture(Buffer.Texture, 0, Buffer.Memory, Buffer.Width * 4);
+  SDL_RenderTexture(r, Buffer.Texture, 0, 0);
   SDL_RenderPresent(r);
 }
 
@@ -80,8 +105,11 @@ bool HandleEvent(SDL_Event *Event) {
   case SDL_EVENT_WINDOW_RESIZED: {
     SDL_Window *w = SDL_GetWindowFromID(Event->window.windowID);
     SDL_Renderer *r = SDL_GetRenderer(w);
-    SDLResizeTextureBuffer(r, Event->window.data1, Event->window.data2);
-    SDLUpdateWindow(r);
+    sdl_window_dimension window_size = SDLGetWindowDimension(w);
+
+    // SDLResizeTextureBuffer(&GlobalBackBuffer, r, window_size.Width,
+    //                        window_size.Height);
+    SDLDisplayBufferWindow(r, GlobalBackBuffer);
 
   } break;
   case SDL_EVENT_WINDOW_CLOSE_REQUESTED: {
@@ -91,7 +119,33 @@ bool HandleEvent(SDL_Event *Event) {
   case SDL_EVENT_WINDOW_EXPOSED: {
     SDL_Window *w = SDL_GetWindowFromID(Event->window.windowID);
     SDL_Renderer *r = SDL_GetRenderer(w);
-    SDLUpdateWindow(r);
+    SDLDisplayBufferWindow(r, GlobalBackBuffer);
+  } break;
+  case SDL_EVENT_KEY_DOWN: {
+    SDL_Keycode KeyCode = Event->key.key;
+    std::cout << KeyCode << "\n";
+    local_persist int x_offset = 0;
+    local_persist int y_offset = 0;
+
+    if (KeyCode == SDLK_W) {
+      y_offset = 4 + y_offset;
+    }
+
+    if (KeyCode == SDLK_S) {
+      y_offset = y_offset - 4;
+    }
+
+    if (KeyCode == SDLK_A) {
+      x_offset = x_offset - 4;
+    }
+
+    if (KeyCode == SDLK_D) {
+      x_offset = x_offset + 4;
+    }
+
+    std::cout << x_offset << "\n";
+    std::cout << y_offset << "\n";
+
   } break;
   }
 
@@ -103,7 +157,9 @@ int main() {
     std::cerr << "Error initializing the VIDEO DRIVER\n";
   };
 
-  SDL_Window *Window = SDL_CreateWindow("", 900, 900, SDL_WINDOW_RESIZABLE);
+  SDL_Window *Window = SDL_CreateWindow(
+      "", 1280, 720,
+      SDL_WINDOW_RESIZABLE); // NOTE: SDL_WINDOW_RESIZABLE to stick
   if (!Window) {
     std::cerr << "Failed to create Window\n";
   }
@@ -111,10 +167,7 @@ int main() {
   if (!r) {
     std::cerr << "Failed to create Renderer\n";
   }
-  SDLResizeTextureBuffer(r, 900, 900);
-
-  int x_offset = 0;
-  int y_offset = 0;
+  SDLResizeTextureBuffer(&GlobalBackBuffer, r, 1280, 720);
 
   while (Running) {
     SDL_Event registeredEvent;
@@ -123,11 +176,26 @@ int main() {
         Running = false;
       }
     }
+    const bool *KeyStates = SDL_GetKeyboardState(NULL);
 
-    RenderWeirdGradiant(x_offset, y_offset);
-    SDLUpdateWindow(r);
-    ++x_offset;
-    ++y_offset;
+    local_persist int x_offset = 0;
+    local_persist int y_offset = 0;
+
+    if (KeyStates[SDL_SCANCODE_W]) {
+      y_offset -= 1;
+    }
+    if (KeyStates[SDL_SCANCODE_S]) {
+      y_offset += 1;
+    }
+    if (KeyStates[SDL_SCANCODE_A]) {
+      x_offset -= 1;
+    }
+    if (KeyStates[SDL_SCANCODE_D]) {
+      x_offset += 1;
+    }
+
+    RenderWeirdGradiant(GlobalBackBuffer, x_offset, y_offset);
+    SDLDisplayBufferWindow(r, GlobalBackBuffer);
   }
 
   SDL_DestroyRenderer(r);
