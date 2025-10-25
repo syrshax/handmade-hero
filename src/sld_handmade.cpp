@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -54,8 +55,8 @@ internal void RenderWeirdGradiant(sdl_offscreen_buffer Buffer, int x_offset,
        */
       uint8 red = (X + x_offset);
       uint8 green = (Y + y_offset);
-      uint8 blue = ((x_offset + y_offset) * 100) / 500;
-      uint8 opacity = 255;
+      uint8 blue = 50;
+      uint8 opacity = 188;
 
       *Pixel++ = (opacity << 24) | (blue << 16) | (green << 8) | red;
     }
@@ -127,7 +128,7 @@ bool HandleEvent(SDL_Event *Event) {
 }
 
 int main() {
-  if (!SDL_Init(0)) {
+  if (!SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO)) {
     std::cerr << "Error initializing the VIDEO DRIVER\n";
   };
 
@@ -168,10 +169,13 @@ int main() {
       x_offset += 1;
     }
 
+    if (KeyStates[SDL_SCANCODE_F4] && KeyStates[SDL_SCANCODE_LALT]) {
+      Running = false;
+    }
+
     RenderWeirdGradiant(GlobalBackBuffer, x_offset, y_offset);
     SDLDisplayBufferWindow(r, GlobalBackBuffer);
   }
-
   SDL_DestroyRenderer(r);
   SDL_DestroyWindow(Window);
   SDL_Quit();
