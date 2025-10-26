@@ -1,11 +1,12 @@
+#include "SDL3/SDL.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <sys/mman.h>
 #include <sys/types.h>
-
-#include "SDL3/SDL.h"
+#include <vector>
 
 #define internal static
 #define local_persist static
@@ -27,12 +28,20 @@ struct sdl_offscreen_buffer {
   int Pitch;
 };
 
+struct player_inputs {
+  const bool *KeyStates;
+};
+
 struct sdl_window_dimension {
   int Width;
   int Height;
 };
 
+global_variable SDL_AudioSpec audio_spec =
+    SDL_AudioSpec{SDL_AUDIO_F32, 1, 4096};
+
 global_variable sdl_offscreen_buffer GlobalBackBuffer{};
+global_variable player_inputs GlobalPlayerWindowInput{};
 
 internal sdl_window_dimension SDLGetWindowDimension(SDL_Window *w) { // ignore
   sdl_window_dimension r;
@@ -73,7 +82,7 @@ internal void SDLResizeTextureBuffer(sdl_offscreen_buffer *Buffer,
   if (Buffer->Memory) {
     int ok = munmap(Buffer->Memory,
                     ((Buffer->Width * Buffer->Height) * BitsPerPixel));
-    std::cerr << "Its ok?: " << ok << "\n";
+    std::cerr << "Memory created! 0 = YES: " << ok << "\n";
   }
   if (Buffer->Texture) {
     SDL_DestroyTexture(Buffer->Texture);
@@ -110,6 +119,8 @@ bool HandleEvent(SDL_Event *Event) {
 
     SDLResizeTextureBuffer(&GlobalBackBuffer, r, window_size.Width,
                            window_size.Height);
+
+    RenderWeirdGradiant(GlobalBackBuffer, 0, 0);
     SDLDisplayBufferWindow(r, GlobalBackBuffer);
 
   } break;
@@ -127,10 +138,43 @@ bool HandleEvent(SDL_Event *Event) {
   return (ShouldQuit);
 }
 
+internal void KeyBoardStatusChange() {
+  GlobalPlayerWindowInput.KeyStates = SDL_GetKeyboardState(NULL);
+
+  local_persist int x_offset = 0;
+  local_persist int y_offset = 0;
+
+  if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_W]) {
+    y_offset -= 1;
+    RenderWeirdGradiant(GlobalBackBuffer, x_offset, y_offset);
+  }
+  if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_S]) {
+    y_offset += 1;
+    RenderWeirdGradiant(GlobalBackBuffer, x_offset, y_offset);
+  }
+  if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_A]) {
+    x_offset -= 1;
+
+    RenderWeirdGradiant(GlobalBackBuffer, x_offset, y_offset);
+  }
+  if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_D]) {
+    x_offset += 1;
+    RenderWeirdGradiant(GlobalBackBuffer, x_offset, y_offset);
+  }
+
+  if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_F4] &&
+      GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_LALT]) {
+    Running = false;
+  }
+}
+
 int main() {
   if (!SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO)) {
-    std::cerr << "Error initializing the VIDEO DRIVER\n";
+    std::cerr << "Error initializing the VIDEO DRIVER | AUDIO DRIVER! \n";
   };
+
+  /* We create the Window and Renderer (our layout)
+   */
 
   SDL_Window *Window = SDL_CreateWindow(
       "", 1280, 720,
@@ -138,11 +182,26 @@ int main() {
   if (!Window) {
     std::cerr << "Failed to create Window\n";
   }
+
   SDL_Renderer *r = SDL_CreateRenderer(Window, NULL);
   if (!r) {
     std::cerr << "Failed to create Renderer\n";
   }
+
+  /* This generates the Audio Stream. Gets the default Device and Binds to it.
+   * Then you need to use the functions to send data with PutAudioStreamData to
+   * it.
+   */
+  SDL_AudioStream *AudioStream =
+      SDL_CreateAudioStream(&audio_spec, &audio_spec);
+  int deviceId;
+
+  deviceId =
+      SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audio_spec);
+  SDL_BindAudioStream(deviceId, AudioStream);
+
   SDLResizeTextureBuffer(&GlobalBackBuffer, r, 1280, 720);
+  RenderWeirdGradiant(GlobalBackBuffer, 0, 0);
 
   while (Running) {
     SDL_Event registeredEvent;
@@ -151,29 +210,8 @@ int main() {
         Running = false;
       }
     }
-    const bool *KeyStates = SDL_GetKeyboardState(NULL);
 
-    local_persist int x_offset = 0;
-    local_persist int y_offset = 0;
-
-    if (KeyStates[SDL_SCANCODE_W]) {
-      y_offset -= 1;
-    }
-    if (KeyStates[SDL_SCANCODE_S]) {
-      y_offset += 1;
-    }
-    if (KeyStates[SDL_SCANCODE_A]) {
-      x_offset -= 1;
-    }
-    if (KeyStates[SDL_SCANCODE_D]) {
-      x_offset += 1;
-    }
-
-    if (KeyStates[SDL_SCANCODE_F4] && KeyStates[SDL_SCANCODE_LALT]) {
-      Running = false;
-    }
-
-    RenderWeirdGradiant(GlobalBackBuffer, x_offset, y_offset);
+    KeyBoardStatusChange();
     SDLDisplayBufferWindow(r, GlobalBackBuffer);
   }
   SDL_DestroyRenderer(r);

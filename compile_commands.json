@@ -2,6 +2,6 @@
   {
     "directory": "/home/user/personal/handmade-hero",
     "command": "clang++ ./src/sld_handmade.cpp -o ./build/handmadehero -g -Wall -Wextra -I/usr/include/SDL3 -D_REENTRANT -L/usr/lib/x86_64-linux-gnu -lSDL3",
-    "file": "./src/sld_handmade.cpp"
+    "file": "/home/user/personal/handmade-hero/src/sld_handmade.cpp"
   }
 ]
