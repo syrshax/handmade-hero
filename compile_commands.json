@@ -1,7 +1,7 @@
 [
   {
     "directory": "/home/user/personal/handmade-hero",
-    "command": "clang++ ./src/sld_handmade.cpp -o ./build/handmadehero -g -Wall -Wextra -I/usr/include/SDL3 -D_REENTRANT -L/usr/lib/x86_64-linux-gnu -lSDL3",
-    "file": "/home/user/personal/handmade-hero/src/sld_handmade.cpp"
+    "command": "clang++ ./src/sdl_handmade.cpp -o ./build/handmadehero -g -Wall -Wextra -I/usr/include/SDL3 -D_REENTRANT -L/usr/lib/x86_64-linux-gnu -lSDL3",
+    "file": "/home/user/personal/handmade-hero/src/sdl_handmade.cpp"
   }
 ]

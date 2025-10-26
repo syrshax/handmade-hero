@@ -2,7 +2,7 @@
 
 echo "Compiling..."
 
-clang++ ../src/sld_handmade.cpp -o handmadehero -g `pkg-config --cflags --libs sdl3`
+clang++ ../src/sdl_handmade.cpp -o handmadehero -g `pkg-config --cflags --libs sdl3`
 
 if [ $? -eq 0 ]; then
     echo "Compilation successful"
