@@ -1,12 +1,11 @@
 #include "SDL3/SDL.h"
-#include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <sys/mman.h>
 #include <sys/types.h>
-#include <vector>
 
 #define internal static
 #define local_persist static
@@ -200,9 +199,14 @@ int main() {
       SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audio_spec);
   SDL_BindAudioStream(deviceId, AudioStream);
 
+  void *AudioBuffer = malloc(1024);
+  memset(AudioBuffer, 0, 1024);
+  SDL_PutAudioStreamData(AudioStream, AudioBuffer, 1024);
+
+  /* Now the Game infinte loop */
+
   SDLResizeTextureBuffer(&GlobalBackBuffer, r, 1280, 720);
   RenderWeirdGradiant(GlobalBackBuffer, 0, 0);
-
   while (Running) {
     SDL_Event registeredEvent;
     while (SDL_PollEvent(&registeredEvent)) {
