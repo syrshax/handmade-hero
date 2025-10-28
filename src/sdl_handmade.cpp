@@ -7,16 +7,13 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 
-#define internal static
-#define local_persist static
-#define global_variable static
-
 typedef uint8_t uint8;
+typedef int16_t int16;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
 
-global_variable bool Running = true;
+static bool Running = true;
 
 // NOTE: Always 32-bits pixels. SDL_PIXELFORMAT_ABGR8888. Little Endian.
 struct sdl_offscreen_buffer {
@@ -36,20 +33,17 @@ struct sdl_window_dimension {
   int Height;
 };
 
-global_variable SDL_AudioSpec audio_spec =
-    SDL_AudioSpec{SDL_AUDIO_F32, 1, 4096};
+static sdl_offscreen_buffer GlobalBackBuffer{};
+static player_inputs GlobalPlayerWindowInput{};
 
-global_variable sdl_offscreen_buffer GlobalBackBuffer{};
-global_variable player_inputs GlobalPlayerWindowInput{};
-
-internal sdl_window_dimension SDLGetWindowDimension(SDL_Window *w) { // ignore
+static sdl_window_dimension SDLGetWindowDimension(SDL_Window *w) { // ignore
   sdl_window_dimension r;
   SDL_GetWindowSize(w, &r.Width, &r.Height);
   return r;
 }
 
-internal void RenderWeirdGradiant(sdl_offscreen_buffer Buffer, int x_offset,
-                                  int y_offset) {
+static void RenderWeirdGradiant(sdl_offscreen_buffer Buffer, int x_offset,
+                                int y_offset) {
 
   uint8 *Row = (uint8 *)Buffer.Memory;
   for (int Y = 0; Y < Buffer.Height; ++Y) {
@@ -73,15 +67,12 @@ internal void RenderWeirdGradiant(sdl_offscreen_buffer Buffer, int x_offset,
 }
 
 // TODO: This will be filed
-
-internal void SDLResizeTextureBuffer(sdl_offscreen_buffer *Buffer,
-                                     SDL_Renderer *r, int width, int height) {
+static void SDLResizeTextureBuffer(sdl_offscreen_buffer *Buffer,
+                                   SDL_Renderer *r, int width, int height) {
   int BitsPerPixel = 4;
 
   if (Buffer->Memory) {
-    int ok = munmap(Buffer->Memory,
-                    ((Buffer->Width * Buffer->Height) * BitsPerPixel));
-    std::cerr << "Memory created! 0 = YES: " << ok << "\n";
+    munmap(Buffer->Memory, ((Buffer->Width * Buffer->Height) * BitsPerPixel));
   }
   if (Buffer->Texture) {
     SDL_DestroyTexture(Buffer->Texture);
@@ -100,8 +91,8 @@ internal void SDLResizeTextureBuffer(sdl_offscreen_buffer *Buffer,
   Buffer->Pitch = Buffer->Width * BitsPerPixel;
 }
 
-internal void SDLDisplayBufferWindow(SDL_Renderer *r,
-                                     sdl_offscreen_buffer Buffer) {
+static void SDLDisplayBufferWindow(SDL_Renderer *r,
+                                   sdl_offscreen_buffer Buffer) {
   SDL_UpdateTexture(Buffer.Texture, 0, Buffer.Memory, Buffer.Width * 4);
   SDL_RenderTexture(r, Buffer.Texture, 0, 0);
   SDL_RenderPresent(r);
@@ -137,14 +128,17 @@ bool HandleEvent(SDL_Event *Event) {
   return (ShouldQuit);
 }
 
-internal void KeyBoardStatusChange() {
+static int GlobalAudioDeviceID = 0;
+
+static void KeyBoardStatusChange() {
   GlobalPlayerWindowInput.KeyStates = SDL_GetKeyboardState(NULL);
 
-  local_persist int x_offset = 0;
-  local_persist int y_offset = 0;
+  static int x_offset = 0;
+  static int y_offset = 0;
 
   if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_W]) {
     y_offset -= 1;
+    SDL_ResumeAudioDevice(GlobalAudioDeviceID);
     RenderWeirdGradiant(GlobalBackBuffer, x_offset, y_offset);
   }
   if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_S]) {
@@ -164,6 +158,81 @@ internal void KeyBoardStatusChange() {
   if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_F4] &&
       GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_LALT]) {
     Running = false;
+  }
+}
+
+// NOTE: Sound test
+static SDL_AudioStream *GlobalAudioStream = nullptr;
+int SamplesPerSecond = 48000;
+int ToneHz = 440;
+int16 ToneVolume = 800;
+uint32 RunningSampleIndex = 0;
+int SquareWavePeriod = SamplesPerSecond / ToneHz;
+int HalfSquareWavePeriod = SquareWavePeriod / 2;
+int BytesPerSample = sizeof(int16) * 2;
+int BytesToWrite = 800 * BytesPerSample;
+
+static void SDLInitAudio() {
+  static SDL_AudioSpec audio_spec = {SDL_AUDIO_S16LE, 2, 48000};
+
+  GlobalAudioStream = SDL_CreateAudioStream(&audio_spec, &audio_spec);
+  GlobalAudioDeviceID =
+      SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audio_spec);
+
+  if (GlobalAudioStream && GlobalAudioDeviceID) {
+    SDL_BindAudioStream(GlobalAudioDeviceID, GlobalAudioStream);
+
+    int SampleCount = BytesToWrite / BytesPerSample;
+    void *AudioBuffer = malloc(BytesToWrite);
+    int16 *SampleOut = (int16 *)AudioBuffer;
+    int16 SampleValue;
+    for (int SampleIndex = 0; SampleIndex < SampleCount; ++SampleIndex) {
+      int16 WavePhase = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2);
+      if (WavePhase == 1) {
+        SampleValue = ToneVolume;
+      } else {
+        SampleValue = -ToneVolume;
+      }
+
+      *SampleOut++ = SampleValue;
+      *SampleOut++ = SampleValue;
+    }
+
+    SDL_PutAudioStreamData(GlobalAudioStream, AudioBuffer, BytesToWrite);
+    free(AudioBuffer);
+    SDL_PauseAudioStreamDevice(GlobalAudioStream);
+    std::cout << "Audio device successfully initialized and started.\n";
+  } else {
+    std::cerr << "Failed to initialize audio: " << SDL_GetError() << "\n";
+  }
+}
+
+int AudioBufferBytes = SamplesPerSecond * BytesPerSample; // 1 second of audio
+
+static void SDLFillerAudioBuffer() {
+  int BytesQueued = SDL_GetAudioStreamAvailable(GlobalAudioStream);
+  int BytesToGenerate = AudioBufferBytes - BytesQueued;
+
+  if (BytesToGenerate > 0) {
+    void *AudioBuffer = malloc(BytesToGenerate);
+    int SampleCount = BytesToGenerate / BytesPerSample;
+    int16 *SampleOut = (int16 *)AudioBuffer;
+    int16 SampleValue;
+    for (int SampleIndex = 0; SampleIndex < SampleCount; ++SampleIndex) {
+      int16 WavePhase = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2);
+      if (WavePhase == 1) {
+        SampleValue = ToneVolume;
+      } else {
+        SampleValue = -ToneVolume;
+      }
+
+      *SampleOut++ = SampleValue;
+      *SampleOut++ = SampleValue;
+    }
+
+    SDL_PutAudioStreamData(GlobalAudioStream, AudioBuffer, BytesToGenerate);
+    free(AudioBuffer);
+    SDL_PauseAudioStreamDevice(GlobalAudioStream);
   }
 }
 
@@ -191,20 +260,10 @@ int main() {
    * Then you need to use the functions to send data with PutAudioStreamData to
    * it.
    */
-  SDL_AudioStream *AudioStream =
-      SDL_CreateAudioStream(&audio_spec, &audio_spec);
-  int deviceId;
-
-  deviceId =
-      SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audio_spec);
-  SDL_BindAudioStream(deviceId, AudioStream);
-
-  void *AudioBuffer = malloc(1024);
-  memset(AudioBuffer, 0, 1024);
-  SDL_PutAudioStreamData(AudioStream, AudioBuffer, 1024);
 
   /* Now the Game infinte loop */
 
+  SDLInitAudio();
   SDLResizeTextureBuffer(&GlobalBackBuffer, r, 1280, 720);
   RenderWeirdGradiant(GlobalBackBuffer, 0, 0);
   while (Running) {
@@ -214,7 +273,7 @@ int main() {
         Running = false;
       }
     }
-
+    SDLFillerAudioBuffer();
     KeyBoardStatusChange();
     SDLDisplayBufferWindow(r, GlobalBackBuffer);
   }
