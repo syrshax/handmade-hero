@@ -1,17 +1,24 @@
 #include "SDL3/SDL.h"
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <math.h>
 #include <sys/mman.h>
 #include <sys/types.h>
+
+#define Pi32 3.141592
 
 typedef uint8_t uint8;
 typedef int16_t int16;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
+
+typedef float real32;
+typedef double real64;
 
 static bool Running = true;
 
@@ -42,13 +49,13 @@ static sdl_window_dimension SDLGetWindowDimension(SDL_Window *w) { // ignore
   return r;
 }
 
-static void RenderWeirdGradiant(sdl_offscreen_buffer Buffer, int x_offset,
+static void RenderWeirdGradiant(sdl_offscreen_buffer *Buffer, int x_offset,
                                 int y_offset) {
 
-  uint8 *Row = (uint8 *)Buffer.Memory;
-  for (int Y = 0; Y < Buffer.Height; ++Y) {
+  uint8 *Row = (uint8 *)Buffer -> Memory;
+  for (int Y = 0; Y < Buffer -> Height; ++Y) {
     uint32 *Pixel = (uint32 *)Row;
-    for (int X = 0; X < Buffer.Width; ++X) {
+    for (int X = 0; X < Buffer -> Width; ++X) {
 
       /*
        * Pixel in memory:	RR	GG	BB	padding
@@ -62,7 +69,7 @@ static void RenderWeirdGradiant(sdl_offscreen_buffer Buffer, int x_offset,
 
       *Pixel++ = (opacity << 24) | (blue << 16) | (green << 8) | red;
     }
-    Row += Buffer.Pitch;
+    Row += Buffer -> Pitch;
   }
 }
 
@@ -93,6 +100,7 @@ static void SDLResizeTextureBuffer(sdl_offscreen_buffer *Buffer,
 
 static void SDLDisplayBufferWindow(SDL_Renderer *r,
                                    sdl_offscreen_buffer Buffer) {
+
   SDL_UpdateTexture(Buffer.Texture, 0, Buffer.Memory, Buffer.Width * 4);
   SDL_RenderTexture(r, Buffer.Texture, 0, 0);
   SDL_RenderPresent(r);
@@ -110,7 +118,7 @@ bool HandleEvent(SDL_Event *Event) {
     SDLResizeTextureBuffer(&GlobalBackBuffer, r, window_size.Width,
                            window_size.Height);
 
-    RenderWeirdGradiant(GlobalBackBuffer, 0, 0);
+    RenderWeirdGradiant(&GlobalBackBuffer, 0, 0);
     SDLDisplayBufferWindow(r, GlobalBackBuffer);
 
   } break;
@@ -139,20 +147,20 @@ static void KeyBoardStatusChange() {
   if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_W]) {
     y_offset -= 1;
     SDL_ResumeAudioDevice(GlobalAudioDeviceID);
-    RenderWeirdGradiant(GlobalBackBuffer, x_offset, y_offset);
+    RenderWeirdGradiant(&GlobalBackBuffer, x_offset, y_offset);
   }
   if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_S]) {
     y_offset += 1;
-    RenderWeirdGradiant(GlobalBackBuffer, x_offset, y_offset);
+    RenderWeirdGradiant(&GlobalBackBuffer, x_offset, y_offset);
   }
   if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_A]) {
     x_offset -= 1;
 
-    RenderWeirdGradiant(GlobalBackBuffer, x_offset, y_offset);
+    RenderWeirdGradiant(&GlobalBackBuffer, x_offset, y_offset);
   }
   if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_D]) {
     x_offset += 1;
-    RenderWeirdGradiant(GlobalBackBuffer, x_offset, y_offset);
+    RenderWeirdGradiant(&GlobalBackBuffer, x_offset, y_offset);
   }
 
   if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_F4] &&
@@ -165,10 +173,9 @@ static void KeyBoardStatusChange() {
 static SDL_AudioStream *GlobalAudioStream = nullptr;
 int SamplesPerSecond = 48000;
 int ToneHz = 440;
-int16 ToneVolume = 800;
+int16 ToneVolume = 1200;
 uint32 RunningSampleIndex = 0;
-int SquareWavePeriod = SamplesPerSecond / ToneHz;
-int HalfSquareWavePeriod = SquareWavePeriod / 2;
+int WavePeriod = SamplesPerSecond / ToneHz;
 int BytesPerSample = sizeof(int16) * 2;
 int BytesToWrite = 800 * BytesPerSample;
 
@@ -185,30 +192,26 @@ static void SDLInitAudio() {
     int SampleCount = BytesToWrite / BytesPerSample;
     void *AudioBuffer = malloc(BytesToWrite);
     int16 *SampleOut = (int16 *)AudioBuffer;
-    int16 SampleValue;
     for (int SampleIndex = 0; SampleIndex < SampleCount; ++SampleIndex) {
-      int16 WavePhase = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2);
-      if (WavePhase == 1) {
-        SampleValue = ToneVolume;
-      } else {
-        SampleValue = -ToneVolume;
-      }
-
+      real32 t = 2.0f * Pi32 * (real32)RunningSampleIndex;
+      t /= (real32)WavePeriod;
+      real32 SineValue = sinf(t);
+      int16 SampleValue = (int16)(SineValue * ToneVolume);
       *SampleOut++ = SampleValue;
       *SampleOut++ = SampleValue;
+      RunningSampleIndex++;
     }
 
     SDL_PutAudioStreamData(GlobalAudioStream, AudioBuffer, BytesToWrite);
     free(AudioBuffer);
-    SDL_PauseAudioStreamDevice(GlobalAudioStream);
     std::cout << "Audio device successfully initialized and started.\n";
   } else {
     std::cerr << "Failed to initialize audio: " << SDL_GetError() << "\n";
   }
 }
 
-int AudioBufferBytes = SamplesPerSecond * BytesPerSample; // 1 second of audio
-
+static int AudioBufferBytes =
+    SamplesPerSecond * BytesPerSample; // 1 second of audio
 static void SDLFillerAudioBuffer() {
   int BytesQueued = SDL_GetAudioStreamAvailable(GlobalAudioStream);
   int BytesToGenerate = AudioBufferBytes - BytesQueued;
@@ -217,22 +220,18 @@ static void SDLFillerAudioBuffer() {
     void *AudioBuffer = malloc(BytesToGenerate);
     int SampleCount = BytesToGenerate / BytesPerSample;
     int16 *SampleOut = (int16 *)AudioBuffer;
-    int16 SampleValue;
+
     for (int SampleIndex = 0; SampleIndex < SampleCount; ++SampleIndex) {
-      int16 WavePhase = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2);
-      if (WavePhase == 1) {
-        SampleValue = ToneVolume;
-      } else {
-        SampleValue = -ToneVolume;
-      }
-
+      real32 t = 2.0f * Pi32 * (real32)RunningSampleIndex;
+      t /= (real32)WavePeriod;
+      real32 SineValue = sinf(t);
+      int16 SampleValue = (int16)(SineValue * ToneVolume);
       *SampleOut++ = SampleValue;
       *SampleOut++ = SampleValue;
+      RunningSampleIndex++;
     }
-
     SDL_PutAudioStreamData(GlobalAudioStream, AudioBuffer, BytesToGenerate);
     free(AudioBuffer);
-    SDL_PauseAudioStreamDevice(GlobalAudioStream);
   }
 }
 
@@ -265,8 +264,11 @@ int main() {
 
   SDLInitAudio();
   SDLResizeTextureBuffer(&GlobalBackBuffer, r, 1280, 720);
-  RenderWeirdGradiant(GlobalBackBuffer, 0, 0);
+  RenderWeirdGradiant(&GlobalBackBuffer, 0, 0);
+
+  uint64 PerfCountFrecuency = SDL_GetPerformanceFrequency();
   while (Running) {
+    uint64 LastCounter = SDL_GetPerformanceCounter();
     SDL_Event registeredEvent;
     while (SDL_PollEvent(&registeredEvent)) {
       if (HandleEvent(&registeredEvent)) {
@@ -276,7 +278,18 @@ int main() {
     SDLFillerAudioBuffer();
     KeyBoardStatusChange();
     SDLDisplayBufferWindow(r, GlobalBackBuffer);
+
+    uint64 EndCounter = SDL_GetPerformanceCounter();
+    uint64 CounterElapsed = EndCounter - LastCounter;
+
+    real64 MSPerFrame =
+        (((1000.0f * (real64)CounterElapsed) / (real64)PerfCountFrecuency));
+    real64 FPS = (real64)PerfCountFrecuency / (real64)CounterElapsed;
+
+    printf("MILLISECONDS PER FRAME -> %.02f ms/f, \n FPS -> %.02ff/s\n",
+           MSPerFrame, FPS);
   }
+
   SDL_DestroyRenderer(r);
   SDL_DestroyWindow(Window);
   SDL_Quit();
