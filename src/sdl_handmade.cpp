@@ -52,10 +52,10 @@ static sdl_window_dimension SDLGetWindowDimension(SDL_Window *w) { // ignore
 static void RenderWeirdGradiant(sdl_offscreen_buffer *Buffer, int x_offset,
                                 int y_offset) {
 
-  uint8 *Row = (uint8 *)Buffer -> Memory;
-  for (int Y = 0; Y < Buffer -> Height; ++Y) {
+  uint8 *Row = (uint8 *)Buffer->Memory;
+  for (int Y = 0; Y < Buffer->Height; ++Y) {
     uint32 *Pixel = (uint32 *)Row;
-    for (int X = 0; X < Buffer -> Width; ++X) {
+    for (int X = 0; X < Buffer->Width; ++X) {
 
       /*
        * Pixel in memory:	RR	GG	BB	padding
@@ -69,7 +69,7 @@ static void RenderWeirdGradiant(sdl_offscreen_buffer *Buffer, int x_offset,
 
       *Pixel++ = (opacity << 24) | (blue << 16) | (green << 8) | red;
     }
-    Row += Buffer -> Pitch;
+    Row += Buffer->Pitch;
   }
 }
 
