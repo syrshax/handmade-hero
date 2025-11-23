@@ -1,5 +1,6 @@
 #include "handmade.h"
 #include <cmath>
+#include <iostream>
 
 #define Pi32 3.14159265359f
 
@@ -44,10 +45,19 @@ static void RenderWeirdGradient(game_offscreen_buffer *Buffer, int x_offset,
   }
 }
 
-static void GameUpdateAndRender(game_offscreen_buffer *Buffer, int XOffset,
-                                int YOffset,
-                                game_sound_output_buffer *SoundBuffer,
-                                int ToneHz) {
-  GameOutputSound(SoundBuffer, ToneHz);
-  RenderWeirdGradient(Buffer, XOffset, YOffset);
+static void GameUpdateAndRender(game_input *Input,
+                                game_offscreen_buffer *Buffer,
+                                game_sound_output_buffer *SoundBuffer) {
+  static int blueOffset = 0;
+  static int greenOffset = 0;
+  static int toneHz = 220;
+
+  game_controller_input *Input0 = &Input->Controllers[0];
+  if (Input0->IsAnalog) {
+    blueOffset += (int)4.0f * (Input0->EndY);
+  } else {
+  }
+
+  GameOutputSound(SoundBuffer, toneHz);
+  RenderWeirdGradient(Buffer, greenOffset, blueOffset);
 }

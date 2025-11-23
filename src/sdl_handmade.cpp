@@ -48,6 +48,9 @@ struct sdl_window_dimension {
   int Height;
 };
 
+static int GlobalAudioDeviceID = 0;
+static SDL_AudioStream *GlobalAudioStream = nullptr;
+
 static sdl_offscreen_buffer GlobalBackBuffer{};
 static player_inputs GlobalPlayerWindowInput{};
 
@@ -119,29 +122,45 @@ bool HandleEvent(SDL_Event *Event) {
   return (ShouldQuit);
 }
 
-static int GlobalAudioDeviceID = 0;
-
+static game_input GameInput;
 static void KeyBoardStatusChange() {
   GlobalPlayerWindowInput.KeyStates = SDL_GetKeyboardState(NULL);
 
-  if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_W]) {
-    SDL_ResumeAudioDevice(GlobalAudioDeviceID);
-  }
-  if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_S]) {
-  }
+  // Reset analog values
+  GameInput.Controllers[0].EndX = 0.0f;
+  GameInput.Controllers[0].EndY = 0.0f;
+
+  // Check if we're using analog input
+  bool32 UsingAnalog = false;
+
+  // Horizontal input (A/D) - controls EndX
   if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_A]) {
+    GameInput.Controllers[0].EndX = -1.0f;
+    UsingAnalog = true;
   }
   if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_D]) {
+    GameInput.Controllers[0].EndX = 1.0f;
+    UsingAnalog = true;
   }
 
+  // Vertical input (W/S) - controls EndY
+  if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_W]) {
+    GameInput.Controllers[0].EndY = 1.0f;
+    UsingAnalog = true;
+  }
+  if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_S]) {
+    GameInput.Controllers[0].EndY = -1.0f;
+    UsingAnalog = true;
+  }
+
+  GameInput.Controllers[0].IsAnalog = UsingAnalog;
+
+  // Alt+F4 to quit
   if (GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_F4] &&
       GlobalPlayerWindowInput.KeyStates[SDL_SCANCODE_LALT]) {
     Running = false;
   }
 }
-
-// NOTE: Sound test
-static SDL_AudioStream *GlobalAudioStream = nullptr;
 
 static void SDLInitAudio() {
   static SDL_AudioSpec audio_spec = {SDL_AUDIO_S16LE, 2, 48000};
@@ -186,8 +205,8 @@ int main() {
   }
 
   /* This generates the Audio Stream. Gets the default Device and Binds to it.
-   * Then you need to use the functions to send data with PutAudioStreamData to
-   * it.
+   * Then you need to use the functions to send data with PutAudioStreamData
+   * to it.
    */
 
   /* Now the Game infinte loop */
@@ -220,7 +239,7 @@ int main() {
     GameBuffer.Height = GlobalBackBuffer.Height;
     GameBuffer.Pitch = GlobalBackBuffer.Pitch;
 
-    GameUpdateAndRender(&GameBuffer, 0, 0, &SoundBuffer, 440);
+    GameUpdateAndRender(&GameInput, &GameBuffer, &SoundBuffer);
 
     SDLDisplayBufferWindow(r, GlobalBackBuffer);
     SDLFillAudioBuffer(&SoundBuffer);
@@ -232,8 +251,8 @@ int main() {
         (((1000.0f * (real64)CounterElapsed) / (real64)PerfCountFrecuency));
     real64 FPS = (real64)PerfCountFrecuency / (real64)CounterElapsed;
 
-    printf("MILLISECONDS PER FRAME -> %.02f ms/f, \n FPS -> %.02ff/s\n",
-           MSPerFrame, FPS);
+    // printf("MILLISECONDS PER FRAME -> %.02f ms/f, \n FPS -> %.02ff/s\n",
+    //        MSPerFrame, FPS);
   }
 
   SDL_DestroyRenderer(r);
