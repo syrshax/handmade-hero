@@ -1,6 +1,14 @@
 #if !defined(HANDMADE_H)
 #define HANDMADE_H
 
+#define Assert(Expression)                                                     \
+  if (!(Expression)) {                                                         \
+    *(int *)0 = 0;                                                             \
+  }
+#define Kilobytes(Value) ((Value) * 1024)
+#define Megabytes(Value) (Kilobytes(Value) * 1024)
+#define Gigabytes(Value) (Megabytes(Value) * 1024)
+
 #include "SDL3/SDL.h"
 #include <cstdint> // Needed for standard integer types like uint8_t
 
@@ -68,14 +76,47 @@ struct game_input {
   game_controller_input Controllers[4];
 };
 
+struct debug_read_file_result {
+  uint32 ContensSize;
+  void *Contents;
+};
+
+#define DEBUG_PLATFORM_READ_ENTIRE_FILE(name)                                  \
+  debug_read_file_result name(const char *Filename)
+typedef DEBUG_PLATFORM_READ_ENTIRE_FILE(debug_platform_read_entire_file);
+
+#define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name)                                 \
+  bool32 name(const char *Filename, uint32 MemorySize, void *Memory)
+typedef DEBUG_PLATFORM_WRITE_ENTIRE_FILE(debug_platform_write_entire_file);
+
+#define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name(void *Memory)
+typedef DEBUG_PLATFORM_FREE_FILE_MEMORY(debug_platform_free_file_memory);
+
+struct game_memory {
+  bool32 IsInitialized;
+  uint64 PermanentStorageSpaceSize;
+  void *PermanentStorage;
+  uint64 TransientStorageSize;
+  void *TransientStorage;
+
+  debug_platform_read_entire_file *DEBUGPlatformReadEntireFile;
+  debug_platform_write_entire_file *DEBUGPlatformWriteEntireFile;
+  debug_platform_free_file_memory *DEBUGPlatformFreeFileMemory;
+};
+
 //
 // NOTE: Function Prototypes
 // The signature must match the definition in handmade.cpp (which takes
 // offsets).
 //
 //
-static void GameUpdateAndRender(game_offscreen_buffer *Buffer,
-                                game_sound_output_buffer *SoundBuffer,
-                                game_input *Input);
+static void GameUpdateAndRender(game_memory *Memory, game_input *Input,
+                                game_offscreen_buffer *Buffer,
+                                game_sound_output_buffer *SoundBuffer);
 
+struct game_state {
+  int ToneHz;
+  int GreenOffset;
+  int BlueOffset;
+};
 #endif

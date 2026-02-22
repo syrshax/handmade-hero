@@ -60,6 +60,12 @@ static sdl_window_dimension SDLGetWindowDimension(SDL_Window *w) { // ignore
   return r;
 }
 
+DEBUG_PLATFORM_FREE_FILE_MEMORY(DEBUGPlatformFreeFileMemory) {
+  if (Memory) {
+    free(Memory);
+  }
+}
+
 // TODO: This will be filed
 static void SDLResizeTextureBuffer(sdl_offscreen_buffer *Buffer,
                                    SDL_Renderer *r, int width, int height) {
@@ -223,6 +229,13 @@ int main() {
   SoundBuffer.SampleCount = SoundBuffer.SamplesPerSecond / 30; // 30 fps worth
   SoundBuffer.Samples = Samples;
 
+  game_memory GameMemory{};
+  GameMemory.PermanentStorageSpaceSize = Megabytes(64);
+  GameMemory.PermanentStorage = malloc(GameMemory.PermanentStorageSpaceSize);
+
+  GameMemory.TransientStorageSize = Gigabytes(uint64(4));
+  GameMemory.TransientStorage = malloc(GameMemory.TransientStorageSize);
+
   uint64 PerfCountFrecuency = SDL_GetPerformanceFrequency();
   while (Running) {
     uint64 LastCounter = SDL_GetPerformanceCounter();
@@ -232,14 +245,14 @@ int main() {
         Running = false;
       }
     }
-    KeyBoardStatusChange();
 
+    KeyBoardStatusChange();
     GameBuffer.Memory = GlobalBackBuffer.Memory;
     GameBuffer.Width = GlobalBackBuffer.Width;
     GameBuffer.Height = GlobalBackBuffer.Height;
     GameBuffer.Pitch = GlobalBackBuffer.Pitch;
 
-    GameUpdateAndRender(&GameInput, &GameBuffer, &SoundBuffer);
+    GameUpdateAndRender(&GameMemory, &GameInput, &GameBuffer, &SoundBuffer);
 
     SDLDisplayBufferWindow(r, GlobalBackBuffer);
     SDLFillAudioBuffer(&SoundBuffer);
@@ -247,12 +260,16 @@ int main() {
     uint64 EndCounter = SDL_GetPerformanceCounter();
     uint64 CounterElapsed = EndCounter - LastCounter;
 
+    // Target: ~16.67ms per frame for 60fps
+    real64 TargetMSPerFrame = 1000.0f / 60.0f;
     real64 MSPerFrame =
-        (((1000.0f * (real64)CounterElapsed) / (real64)PerfCountFrecuency));
-    real64 FPS = (real64)PerfCountFrecuency / (real64)CounterElapsed;
+        (1000.0f * (real64)CounterElapsed) / (real64)PerfCountFrecuency;
 
-    // printf("MILLISECONDS PER FRAME -> %.02f ms/f, \n FPS -> %.02ff/s\n",
-    //        MSPerFrame, FPS);
+    if (MSPerFrame < TargetMSPerFrame) {
+      SDL_Delay((uint32)(TargetMSPerFrame - MSPerFrame));
+    }
+
+    printf("MILLISECONDS PER FRAME -> %.02f ms/f\n\n", MSPerFrame);
   }
 
   SDL_DestroyRenderer(r);
