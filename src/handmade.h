@@ -14,6 +14,7 @@
 
 typedef uint8_t uint8;
 typedef int16_t int16;
+typedef int32_t int32;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
@@ -77,7 +78,7 @@ struct game_input {
 };
 
 struct debug_read_file_result {
-  uint32 ContensSize;
+  uint32 ContentsSize;
   void *Contents;
 };
 
@@ -114,9 +115,38 @@ static void GameUpdateAndRender(game_memory *Memory, game_input *Input,
                                 game_offscreen_buffer *Buffer,
                                 game_sound_output_buffer *SoundBuffer);
 
+struct loaded_bitmap {
+  int32 Width;
+  int32 Height;
+  uint32 *Pixels;
+};
+
 struct game_state {
   int ToneHz;
   int GreenOffset;
   int BlueOffset;
+  loaded_bitmap TestBitmap;
 };
+
+#pragma pack(push, 1)
+struct bitmap_header {
+  uint16 FileType;
+  uint32 FileSize;
+  uint16 Reserved1;
+  uint16 Reserved2;
+  uint32 BitmapOffSet; // starts of pixel data
+  uint32 Size;
+  int32 Width;
+  int32 Height;
+  uint16 Planes;
+  uint16 BitCount;    // bits per pixel
+  uint32 Compression; // 0, 1, 2 or 3 type;
+  uint32 ImageSize;
+  int32 HorzResolution;
+  int32 VertResolution;
+  uint32 ColorsUsed;
+  uint32 ColorsImportant;
+};
+#pragma pack(pop)
+
 #endif

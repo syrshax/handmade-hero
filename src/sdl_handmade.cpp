@@ -60,10 +60,47 @@ static sdl_window_dimension SDLGetWindowDimension(SDL_Window *w) { // ignore
   return r;
 }
 
+// #define DEBUG(name) void name(void *Memory)
+// typedef DEBUG(debug_platform_free_file_memory);
+
 DEBUG_PLATFORM_FREE_FILE_MEMORY(DEBUGPlatformFreeFileMemory) {
   if (Memory) {
     free(Memory);
   }
+}
+
+DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUGPlatformReadEntireFile) {
+  debug_read_file_result Result = {};
+  FILE *File = fopen(Filename, "rb");
+  if (File) {
+    fseek(File, 0, SEEK_END);
+    uint32 FileSize = ftell(File);
+    fseek(File, 0, SEEK_SET);
+
+    Result.Contents = malloc(FileSize);
+    if (Result.Contents) {
+      size_t BytesRead = fread(Result.Contents, 1, FileSize, File);
+      if (BytesRead == FileSize) {
+        Result.ContentsSize = FileSize;
+      } else {
+        DEBUGPlatformFreeFileMemory(Result.Contents);
+        Result.Contents = 0;
+      }
+    }
+    fclose(File);
+  }
+  return Result;
+}
+
+DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUGPlatformWriteEntireFile) {
+  bool32 Result = false;
+  FILE *File = fopen(Filename, "wb");
+  if (File) {
+    size_t BytesWritten = fwrite(Memory, 1, MemorySize, File);
+    Result = (BytesWritten == MemorySize);
+    fclose(File);
+  }
+  return Result;
 }
 
 // TODO: This will be filed
@@ -230,6 +267,10 @@ int main() {
   SoundBuffer.Samples = Samples;
 
   game_memory GameMemory{};
+  GameMemory.DEBUGPlatformFreeFileMemory = DEBUGPlatformFreeFileMemory;
+  GameMemory.DEBUGPlatformReadEntireFile = DEBUGPlatformReadEntireFile;
+  GameMemory.DEBUGPlatformWriteEntireFile = DEBUGPlatformWriteEntireFile;
+
   GameMemory.PermanentStorageSpaceSize = Megabytes(64);
   GameMemory.PermanentStorage = malloc(GameMemory.PermanentStorageSpaceSize);
 
