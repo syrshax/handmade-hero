@@ -125,7 +125,10 @@ struct game_state {
   int ToneHz;
   int GreenOffset;
   int BlueOffset;
+  real32 PlayerX;
+  real32 PlayerY;
   loaded_bitmap TestBitmap;
+  loaded_bitmap TestBitmap2;
 };
 
 #pragma pack(push, 1)

@@ -21,6 +21,69 @@ static void GameOutputSound(game_sound_output_buffer *SoundBuffer, int ToneHz) {
     tSine += 2.0f * Pi32 * 1.0f / (real32)WavePeriod;
   }
 }
+
+static void DrawRectangle(game_offscreen_buffer *Buffer, real32 RealMinX,
+                          real32 RealMinY, real32 RealMaxX, real32 RealMaxY,
+                          uint8 Red, uint8 Green, uint8 Blue) {
+  int32 MinX = (int32)RealMinX;
+  int32 MinY = (int32)RealMinY;
+  int32 MaxX = (int32)RealMaxX;
+  int32 MaxY = (int32)RealMaxY;
+
+  if (MinX < 0)
+    MinX = 0;
+  if (MinY < 0)
+    MinY = 0;
+  if (MaxX > Buffer->Width)
+    MaxX = Buffer->Width;
+  if (MaxY > Buffer->Height)
+    MaxY = Buffer->Height;
+
+  for (int Y = MinY; Y < MaxY; Y++) {
+    uint32 *pixel =
+        (uint32 *)((uint8 *)Buffer->Memory + Y * Buffer->Pitch) + MinX;
+    for (int X = MinX; X < MaxX; X++) {
+      *pixel++ = (0xFF << 24) | (Blue << 16) | (Green << 8) | Red;
+    }
+  }
+}
+
+#define TILEMAP_COLS 16
+#define TILEMAP_ROWS 9
+uint32 TileMap[TILEMAP_ROWS][TILEMAP_COLS] = {
+    {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+    {1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1},
+    {1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+    {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+};
+
+static void DrawTileMap(game_offscreen_buffer *Buffer) {
+  real32 TileWidth = (real32)Buffer->Width / (real32)TILEMAP_COLS;
+  real32 TileHeight = (real32)Buffer->Height / (real32)TILEMAP_ROWS;
+
+  for (int Row = 0; Row < TILEMAP_ROWS; Row++) {
+    for (int Col = 0; Col < TILEMAP_COLS; Col++) {
+      uint32 TileValue = TileMap[Row][Col];
+
+      real32 MinX = (real32)Col * TileWidth;
+      real32 MinY = (real32)Row * TileHeight;
+      real32 MaxX = MinX + TileWidth;
+      real32 MaxY = MinY + TileHeight;
+
+      if (TileValue == 1) {
+        DrawRectangle(Buffer, MinX, MinY, MaxX, MaxY, 100, 100, 100);
+      } else {
+        DrawRectangle(Buffer, MinX, MinY, MaxX, MaxY, 30, 30, 30);
+      }
+    }
+  }
+}
+
 static void RenderWeirdGradient(game_offscreen_buffer *Buffer, int x_offset,
                                 int y_offset) {
   uint8 *Row = (uint8 *)Buffer->Memory;
@@ -133,7 +196,10 @@ static void GameUpdateAndRender(game_memory *Memory, game_input *Input,
   game_state *GameState = (game_state *)Memory->PermanentStorage;
   if (!Memory->IsInitialized) {
     GameState->ToneHz = 220;
+    GameState->PlayerX = 100.0f;
+    GameState->PlayerY = 100.0f;
     GameState->TestBitmap = DEBUGLoadBMP(Memory, "lena.bmp");
+    GameState->TestBitmap2 = DEBUGLoadBMP(Memory, "new_guy.bmp");
     Memory->IsInitialized = true;
   }
 
@@ -141,9 +207,31 @@ static void GameUpdateAndRender(game_memory *Memory, game_input *Input,
   if (Input0->IsAnalog) {
     GameState->GreenOffset += (int)(32.0f * Input0->EndX);
     GameState->BlueOffset -= (int)(32.0f * Input0->EndY);
+    GameState->PlayerX += 4.0f * Input0->EndX;
+    GameState->PlayerY -= 4.0f * Input0->EndY;
+  }
+
+  if (Input0->Down.endeddown) {
+    GameState->PlayerY += 4.0f;
+  }
+  if (Input0->Up.endeddown) {
+    GameState->PlayerY -= 4.0f;
+  }
+  if (Input0->Left.endeddown) {
+    GameState->PlayerX -= 4.0f;
+  }
+  if (Input0->Right.endeddown) {
+    GameState->PlayerX += 4.0f;
   }
 
   GameOutputSound(SoundBuffer, GameState->ToneHz);
-  RenderWeirdGradient(Buffer, GameState->GreenOffset, GameState->BlueOffset);
-  DrawBitmap(Buffer, &GameState->TestBitmap, 100, 100);
+  DrawTileMap(Buffer);
+  // DrawBitmap(Buffer, &GameState->TestBitmap, 100, 100);
+  // DrawBitmap(Buffer, &GameState->TestBitmap2, 600, 600);
+
+  real32 PlayerWidth = 60.0f;
+  real32 PlayerHeight = 80.0f;
+  DrawRectangle(Buffer, GameState->PlayerX, GameState->PlayerY,
+                GameState->PlayerX + PlayerWidth,
+                GameState->PlayerY + PlayerHeight, 254, 20, 50);
 }
